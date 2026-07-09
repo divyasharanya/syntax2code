@@ -1,0 +1,5 @@
+﻿OK: Admin user seeded
+OK: Candidate user seeded with points
+OK: Stripe company seeded
+Login Response: 400
+ERROR occurred:
