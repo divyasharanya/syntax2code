@@ -19,26 +19,25 @@ service cloud.firestore {
       return isSignedIn() && getUserRole() == 'company';
     }
 
+    // Admin check is purely email-based via the Firebase Auth JWT token.
+    // This avoids any dependency on the Firestore `role` field for the admin user,
+    // which may be null on first login. Update this email to match VITE_ADMIN_EMAIL.
     function isAdmin() {
-      return isSignedIn() && getUserRole() == 'admin';
+      return isSignedIn() && request.auth.token.email == 'divyasaranya0619@gmail.com';
     }
 
     // ── users/{uid} ────────────────────────────────────────────────────────
-    // Any signed-in user can read profiles (needed for company name/logo display)
-    // Only the owner can write their own profile
     match /users/{uid} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() || isAdmin();
       allow create: if isOwner(uid);
       allow update: if isOwner(uid) || isAdmin();
       allow delete: if isAdmin();
     }
 
     // ── tasks/{taskId} ─────────────────────────────────────────────────────
-    // Public read (unauthenticated users can browse tasks)
-    // Only company role can create; only the task owner company can update/delete
     match /tasks/{taskId} {
       allow read: if true;
-      allow create: if isCompany();
+      allow create: if isCompany() || isAdmin();
       allow update: if isSignedIn() && (
         resource.data.companyId == request.auth.uid || isAdmin()
       );
@@ -48,9 +47,6 @@ service cloud.firestore {
     }
 
     // ── applications/{appId} ───────────────────────────────────────────────
-    // Candidate creates their own application
-    // Both the candidate and the company owning the task can read
-    // Only the company can update status
     match /applications/{appId} {
       allow create: if isSignedIn() &&
         request.resource.data.candidateId == request.auth.uid;
@@ -63,12 +59,11 @@ service cloud.firestore {
         resource.data.companyId == request.auth.uid || isAdmin()
       );
       allow delete: if isAdmin();
+      // Admin list access: allow listing the entire collection
+      allow list: if isAdmin();
     }
 
     // ── submissions/{subId} ────────────────────────────────────────────────
-    // Candidate creates their own submission
-    // Both the candidate and the owning company can read
-    // Only the company can update (review/score/feedback)
     match /submissions/{subId} {
       allow create: if isSignedIn() &&
         request.resource.data.candidateId == request.auth.uid;
@@ -81,6 +76,8 @@ service cloud.firestore {
         resource.data.companyId == request.auth.uid || isAdmin()
       );
       allow delete: if isAdmin();
+      // Admin list access: allow listing the entire collection
+      allow list: if isAdmin();
     }
   }
 }
