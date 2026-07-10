@@ -7,7 +7,7 @@ import Input from '../components/ui/Input';
 import { IoTerminalOutline, IoAlertCircleOutline, IoPersonOutline, IoBriefcaseOutline } from 'react-icons/io5';
 
 const Register = () => {
-  const { register, error: authError } = useAuth();
+  const { register, user, loading, error: authError } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
@@ -20,7 +20,7 @@ const Register = () => {
     title: '',
     companyName: '',
   });
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -29,6 +29,17 @@ const Register = () => {
       setRole(roleParam);
     }
   }, [searchParams]);
+
+  // Redirect to correct dashboard once Firebase sets the user (post-registration)
+  useEffect(() => {
+    if (!loading && user?.role) {
+      if (user.role === 'company') {
+        navigate('/dashboard/company', { replace: true });
+      } else {
+        navigate('/dashboard/candidate', { replace: true });
+      }
+    }
+  }, [user, loading, navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -44,8 +55,8 @@ const Register = () => {
       return;
     }
 
-    setLoading(true);
-    const res = register({
+    setSubmitting(true);
+    const res = await register({
       name: formData.name,
       email: formData.email,
       password: formData.password,
@@ -53,17 +64,12 @@ const Register = () => {
       title: formData.title,
       companyName: formData.companyName,
     });
-    setLoading(false);
+    setSubmitting(false);
 
-    if (res.success) {
-      if (role === 'company') {
-        navigate('/dashboard/company');
-      } else {
-        navigate('/dashboard/candidate');
-      }
-    } else {
+    if (!res.success) {
       setError(res.error || 'Registration failed');
     }
+    // On success, the useEffect above handles navigation once user state updates.
   };
 
   return (
@@ -176,8 +182,8 @@ const Register = () => {
                 required
               />
 
-              <Button type="submit" className="w-full mt-2" disabled={loading}>
-                {loading ? 'Creating Account...' : 'Get Started'}
+              <Button type="submit" className="w-full mt-2" disabled={submitting}>
+                {submitting ? 'Creating Account...' : 'Get Started'}
               </Button>
             </form>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Button from '../components/ui/Button';
@@ -7,11 +7,23 @@ import Input from '../components/ui/Input';
 import { IoTerminalOutline, IoAlertCircleOutline } from 'react-icons/io5';
 
 const Login = () => {
-  const { login, error: authError } = useAuth();
+  const { login, user, loading, error: authError } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ email: '', password: '' });
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Once Firebase auth resolves the user (and Firestore profile is loaded),
+  // redirect to the correct dashboard based on role.
+  useEffect(() => {
+    if (!loading && user?.role) {
+      if (user.role === 'company') {
+        navigate('/dashboard/company', { replace: true });
+      } else {
+        navigate('/dashboard/candidate', { replace: true });
+      }
+    }
+  }, [user, loading, navigate]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -21,22 +33,15 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setSubmitting(true);
 
-    const res = login(formData.email, formData.password);
-    setLoading(false);
+    const res = await login(formData.email, formData.password);
+    setSubmitting(false);
 
-    if (res.success) {
-      // Find role of signed in user (by fetching from local session)
-      const sessionUser = JSON.parse(localStorage.getItem('microintern_session'));
-      if (sessionUser?.role === 'company') {
-        navigate('/dashboard/company');
-      } else {
-        navigate('/dashboard/candidate');
-      }
-    } else {
+    if (!res.success) {
       setError(res.error || 'Authentication failed');
     }
+    // On success, the useEffect above handles navigation once user state updates.
   };
 
   const handleQuickLogin = (email, password) => {
@@ -85,8 +90,8 @@ const Login = () => {
                 placeholder="••••••••"
                 required
               />
-              <Button type="submit" className="w-full mt-2" disabled={loading}>
-                {loading ? 'Authenticating...' : 'Sign In'}
+              <Button type="submit" className="w-full mt-2" disabled={submitting}>
+                {submitting ? 'Authenticating...' : 'Sign In'}
               </Button>
             </form>
 
@@ -99,7 +104,7 @@ const Login = () => {
           </CardBody>
         </Card>
 
-        {/* Demo Fast Login */}
+        {/* Demo Fast Login — credentials will be seeded into Firebase Auth */}
         <Card className="bg-blue-50/50 border border-blue-100/50">
           <CardBody className="flex flex-col gap-3 py-4">
             <h4 className="text-xs font-bold text-blue-800">💡 Fast-login credentials for testing:</h4>
