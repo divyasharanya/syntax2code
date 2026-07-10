@@ -11,6 +11,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ChooseRole from './pages/ChooseRole';
 import Tasks from './pages/Tasks';
 import TaskDetails from './pages/TaskDetails';
 import DashboardCandidate from './pages/DashboardCandidate';
@@ -29,6 +30,7 @@ function App() {
               <Route index element={<Home />} />
               <Route path="login" element={<Login />} />
               <Route path="register" element={<Register />} />
+              <Route path="choose-role" element={<ChooseRole />} />
               <Route path="tasks" element={<Tasks />} />
               <Route path="tasks/:id" element={<TaskDetails />} />
 

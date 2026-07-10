@@ -4,6 +4,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -106,6 +108,41 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ─── Logout ───────────────────────────────────────────────────────────────
+  // ─── Google Sign-In ───────────────────────────────────────────────────────
+  const signInWithGoogle = async () => {
+    setError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      const credential = await signInWithPopup(auth, provider);
+      const { uid, displayName, email } = credential.user;
+
+      // Check if a Firestore profile already exists for this Google user
+      const profileSnap = await getDoc(doc(db, 'users', uid));
+      if (!profileSnap.exists()) {
+        // First-time Google sign-in: create a minimal profile.
+        // role is null — user will be sent to /choose-role to pick it.
+        await setDoc(doc(db, 'users', uid), {
+          name: displayName || email?.split('@')[0] || 'User',
+          email: email || '',
+          role: null,
+          bio: '',
+          active: true,
+          createdAt: serverTimestamp(),
+        });
+      }
+      // onAuthStateChanged will update `user` state automatically
+      return { success: true };
+    } catch (err) {
+      // Ignore popup-closed-by-user
+      if (err.code === 'auth/popup-closed-by-user') {
+        return { success: false, error: null };
+      }
+      const message = friendlyAuthError(err.code);
+      setError(message);
+      return { success: false, error: message };
+    }
+  };
+
   const logout = async () => {
     setError('');
     try {
@@ -140,6 +177,7 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
+        signInWithGoogle,
       }}
     >
       {children}
