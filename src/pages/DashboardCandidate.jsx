@@ -1,22 +1,39 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { useTasks } from '../context/TaskContext';
 import SubmissionCard from '../components/SubmissionCard';
 import Card, { CardBody, CardHeader } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
-import { IoTrophyOutline, IoCheckmarkCircleOutline, IoHourglassOutline, IoRocketOutline } from 'react-icons/io5';
+import { IoTrophyOutline, IoCheckmarkCircleOutline, IoHourglassOutline, IoRocketOutline, IoMedalOutline } from 'react-icons/io5';
 
-const LEADERBOARD = [
-  { rank: 1, name: 'Sofia Alvarez', points: 650, avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80' },
-  { rank: 2, name: 'Jordan Patel', points: 520, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80' },
-  { rank: 3, name: 'Liam Smith', points: 410, avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80' },
-  { rank: 4, name: 'Alex Rivera', points: 350, avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80', isSelf: true },
-  { rank: 5, name: 'Clara Vance', points: 280, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80' },
-];
+// Avatar initials component
+const InitialsAvatar = ({ name, isSelf, size = 'sm' }) => {
+  const initials = name
+    ? name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+    : '?';
+  const colors = [
+    'bg-violet-500', 'bg-blue-500', 'bg-emerald-500',
+    'bg-amber-500', 'bg-rose-500', 'bg-indigo-500', 'bg-teal-500',
+  ];
+  const color = colors[name?.charCodeAt(0) % colors.length] || 'bg-slate-400';
+  const sizeClass = size === 'sm' ? 'w-7 h-7 text-[10px]' : 'w-9 h-9 text-xs';
+  return (
+    <div className={`${sizeClass} ${color} rounded-full flex items-center justify-center font-bold text-white flex-shrink-0 ${isSelf ? 'ring-2 ring-primary ring-offset-1' : ''}`}>
+      {initials}
+    </div>
+  );
+};
+
+const RANK_MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
 
 const DashboardCandidate = () => {
   const { user } = useAuth();
   const { submissions } = useTasks();
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  const [currentUserRank, setCurrentUserRank] = useState(null);
 
   // Filter submissions corresponding to this candidate
   const candidateSubmissions = submissions.filter((sub) => sub.candidateId === user.uid);
@@ -27,6 +44,37 @@ const DashboardCandidate = () => {
     offered: candidateSubmissions.filter((s) => s.status === 'Offered').length,
     pending: candidateSubmissions.filter((s) => s.status !== 'Offered' && s.status !== 'Rejected').length,
   };
+
+  // Fetch real leaderboard from Firestore
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        const q = query(collection(db, 'users'), where('role', '==', 'candidate'));
+        const snap = await getDocs(q);
+
+        const allCandidates = snap.docs
+          .map((d) => ({ uid: d.id, ...d.data() }))
+          .sort((a, b) => (b.points || 0) - (a.points || 0))
+          .map((c, idx) => ({ ...c, rank: idx + 1 }));
+
+        // Find current user's rank
+        const meInList = allCandidates.find((c) => c.uid === user.uid);
+        if (meInList && meInList.rank > 10) {
+          setCurrentUserRank(meInList);
+        } else {
+          setCurrentUserRank(null);
+        }
+
+        setLeaderboard(allCandidates.slice(0, 10));
+      } catch (err) {
+        console.error('Leaderboard fetch error:', err);
+      } finally {
+        setLeaderboardLoading(false);
+      }
+    };
+
+    fetchLeaderboard();
+  }, [user.uid, user.points]); // re-fetch when user's own points change
 
   return (
     <div className="flex flex-col gap-6">
@@ -118,7 +166,7 @@ const DashboardCandidate = () => {
           )}
         </div>
 
-        {/* Right Side: Competitive Leaderboard */}
+        {/* Right Side: Live Leaderboard */}
         <aside className="flex flex-col gap-4">
           <Card className="border border-slate-100">
             <CardHeader className="py-4 flex items-center gap-2">
@@ -126,33 +174,77 @@ const DashboardCandidate = () => {
               <h3 className="font-extrabold text-slate-800 text-sm">Platform Leaderboard</h3>
             </CardHeader>
             <CardBody className="p-0">
-              <div className="flex flex-col">
-                {LEADERBOARD.map((item) => {
-                  const points = item.isSelf ? stats.points : item.points;
-                  return (
-                    <div
-                      key={item.name}
-                      className={`flex items-center gap-3 px-4 py-3 border-b border-slate-50 last:border-b-0 ${
-                        item.isSelf ? 'bg-primary/5' : ''
-                      }`}
-                    >
-                      <span className="w-5 text-xs font-black text-slate-400 text-center">#{item.rank}</span>
-                      <img
-                        src={item.avatar}
-                        alt={item.name}
-                        className="w-7 h-7 rounded-full object-cover border border-slate-100"
-                      />
-                      <div className="flex-1 leading-tight">
-                        <span className="text-xs font-bold text-slate-800 flex items-center gap-1">
-                          {item.name}
-                          {item.isSelf && <Badge variant="blue" className="text-[8px] px-1 py-0 font-extrabold uppercase">You</Badge>}
+              {leaderboardLoading ? (
+                <div className="flex flex-col gap-2 p-4">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 animate-pulse">
+                      <div className="w-5 h-3 bg-slate-100 rounded" />
+                      <div className="w-7 h-7 bg-slate-100 rounded-full" />
+                      <div className="flex-1 h-3 bg-slate-100 rounded" />
+                      <div className="w-10 h-3 bg-slate-100 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : leaderboard.length === 0 ? (
+                <div className="text-xs text-slate-400 text-center p-6">
+                  <IoMedalOutline size={28} className="mx-auto mb-2 text-slate-300" />
+                  No rankings yet — be the first to earn points!
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  {leaderboard.map((item) => {
+                    const isSelf = item.uid === user.uid;
+                    return (
+                      <div
+                        key={item.uid}
+                        className={`flex items-center gap-3 px-4 py-3 border-b border-slate-50 last:border-b-0 transition-colors ${
+                          isSelf ? 'bg-primary/5 border-l-2 border-l-primary' : ''
+                        }`}
+                      >
+                        <span className="w-5 text-center text-sm">
+                          {RANK_MEDAL[item.rank] || (
+                            <span className="text-xs font-black text-slate-400">#{item.rank}</span>
+                          )}
+                        </span>
+                        <InitialsAvatar name={item.name} isSelf={isSelf} />
+                        <div className="flex-1 leading-tight min-w-0">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1 truncate">
+                            {item.name || 'Anonymous'}
+                            {isSelf && (
+                              <Badge variant="blue" className="text-[8px] px-1 py-0 font-extrabold uppercase flex-shrink-0">You</Badge>
+                            )}
+                          </span>
+                        </div>
+                        <span className={`text-xs font-black flex-shrink-0 ${isSelf ? 'text-primary' : 'text-slate-700'}`}>
+                          {item.points || 0} pts
                         </span>
                       </div>
-                      <span className="text-xs font-black text-slate-700">{points} pts</span>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+
+                  {/* Show current user below if outside top 10 */}
+                  {currentUserRank && (
+                    <>
+                      <div className="flex items-center justify-center py-1">
+                        <span className="text-[9px] text-slate-300 font-bold tracking-widest">• • •</span>
+                      </div>
+                      <div className="flex items-center gap-3 px-4 py-3 bg-primary/5 border-l-2 border-l-primary">
+                        <span className="w-5 text-xs font-black text-slate-400 text-center">#{currentUserRank.rank}</span>
+                        <InitialsAvatar name={currentUserRank.name} isSelf />
+                        <div className="flex-1 leading-tight min-w-0">
+                          <span className="text-xs font-bold text-slate-800 flex items-center gap-1 truncate">
+                            {currentUserRank.name}
+                            <Badge variant="blue" className="text-[8px] px-1 py-0 font-extrabold uppercase flex-shrink-0">You</Badge>
+                          </span>
+                        </div>
+                        <span className="text-xs font-black text-primary flex-shrink-0">
+                          {currentUserRank.points || 0} pts
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </CardBody>
           </Card>
         </aside>

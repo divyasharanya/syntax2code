@@ -11,10 +11,12 @@ const DashboardCompany = () => {
   const { user } = useAuth();
   const { tasks, submissions, reviewSubmission } = useTasks();
 
-  const [activeTab, setActiveTab] = useState('submissions'); // 'challenges' or 'submissions'
-  const [selectedSubId, setSelectedSubId] = useState(null); // Active candidate review detail view ID
+  const [activeTab, setActiveTab] = useState('submissions');
+  const [selectedSubId, setSelectedSubId] = useState(null);
   const [reviewForm, setReviewForm] = useState({ score: '90', feedback: '' });
   const [error, setError] = useState('');
+  const [localStatuses, setLocalStatuses] = useState({}); // optimistic status overrides
+  const [reconsidering, setReconsidering] = useState(false); // show all funnel buttons
 
   // Get tasks posted by this company (uid-based match)
   const companyTasks = tasks.filter((t) => t.companyId === user.uid);
@@ -36,6 +38,7 @@ const DashboardCompany = () => {
       feedback: sub.feedback || '',
     });
     setError('');
+    setReconsidering(false); // always start in focused mode
   };
 
   const handleUpdateStatus = async (newStatus) => {
@@ -51,12 +54,23 @@ const DashboardCompany = () => {
       return;
     }
 
+    // Optimistic update — flip the badge immediately, don't wait for onSnapshot
+    setLocalStatuses((prev) => ({ ...prev, [selectedSubId]: newStatus }));
+    setReconsidering(false); // collapse back to focused view after picking
+
     const res = await reviewSubmission(selectedSubId, newStatus, {
       score: reviewForm.score,
       feedback: reviewForm.feedback,
     });
 
     if (!res.success) {
+      // Roll back optimistic update on failure
+      setLocalStatuses((prev) => {
+        const next = { ...prev };
+        delete next[selectedSubId];
+        return next;
+      });
+      setReconsidering(true); // reopen on failure so they can try again
       setError(res.error || 'Failed to update status');
     }
   };
@@ -116,7 +130,7 @@ const DashboardCompany = () => {
       return null;
     }
 
-    const status = sub.status || 'Applied';
+    const status = localStatuses[selectedSubId] ?? sub.status ?? 'Applied';
     const isApplied = true;
     const isReviewed = ['reviewed', 'shortlisted', 'interview', 'offered'].includes(status.toLowerCase());
     const isShortlisted = ['shortlisted', 'interview', 'offered'].includes(status.toLowerCase());
@@ -293,56 +307,103 @@ const DashboardCompany = () => {
                   rows={4}
                 />
 
-                {/* Pipeline Buttons Group */}
+                {/* Smart Funnel Console */}
                 <div className="flex flex-col gap-2 pt-4 border-t border-slate-50">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">FUNNEL ACTIONS</span>
-                  
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {/* REVIEW BUTTON */}
-                    <Button 
-                      onClick={() => handleUpdateStatus('Reviewed')}
-                      variant={status === 'Reviewed' ? 'primary' : 'outline'}
-                      className="text-xs py-2 w-full font-bold flex items-center justify-center gap-1.5"
-                    >
-                      ✓ Review
-                    </Button>
-                    
-                    {/* SHORTLIST BUTTON */}
-                    <Button 
-                      onClick={() => handleUpdateStatus('Shortlisted')}
-                      variant={status === 'Shortlisted' ? 'primary' : 'outline'}
-                      className="text-xs py-2 w-full font-bold flex items-center justify-center gap-1.5"
-                    >
-                      ★ Shortlist
-                    </Button>
-                    
-                    {/* SCHEDULE INTERVIEW BUTTON */}
-                    <Button 
-                      onClick={() => handleUpdateStatus('Interview')}
-                      variant={status === 'Interview' ? 'primary' : 'outline'}
-                      className="text-xs py-2 w-full font-bold flex items-center justify-center gap-1.5"
-                    >
-                      📅 Schedule Interview
-                    </Button>
-                    
-                    {/* OFFER BUTTON */}
-                    <Button 
-                      onClick={() => handleUpdateStatus('Offered')}
-                      variant={status === 'Offered' ? 'primary' : 'outline'}
-                      className="text-xs py-2 w-full font-bold flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border-none"
-                    >
-                      🏆 Offer
-                    </Button>
-                    
-                    {/* REJECT BUTTON */}
-                    <Button 
-                      onClick={() => handleUpdateStatus('Rejected')}
-                      variant="danger"
-                      className="text-xs py-2 w-full font-bold flex items-center justify-center gap-1.5"
-                    >
-                      ✗ Reject
-                    </Button>
-                  </div>
+
+                  {/* Current decision badge — hidden only when Applied (no decision yet) */}
+                  {status !== 'Applied' && (
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Current Decision</span>
+                        {getStatusBadge(status)}
+                      </div>
+                      {!reconsidering && (
+                        <button
+                          type="button"
+                          onClick={() => setReconsidering(true)}
+                          className="text-[10px] font-bold text-slate-400 hover:text-primary underline cursor-pointer transition-colors"
+                        >
+                          Change ↗
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Show all buttons when: Applied (no decision yet) OR reconsidering */}
+                  {(status === 'Applied' || reconsidering) ? (
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {status === 'Applied' ? 'FUNNEL ACTIONS' : 'CHANGE DECISION TO'}
+                      </span>
+                      <div className="grid grid-cols-1 gap-2">
+                        <Button onClick={() => handleUpdateStatus('Reviewed')} variant={status === 'Reviewed' ? 'primary' : 'outline'} className="text-xs py-2 w-full font-bold">
+                          ✓ Reviewed
+                        </Button>
+                        <Button onClick={() => handleUpdateStatus('Shortlisted')} variant={status === 'Shortlisted' ? 'primary' : 'outline'} className="text-xs py-2 w-full font-bold">
+                          ★ Shortlisted
+                        </Button>
+                        <Button onClick={() => handleUpdateStatus('Interview')} variant={status === 'Interview' ? 'primary' : 'outline'} className="text-xs py-2 w-full font-bold">
+                          📅 Schedule Interview
+                        </Button>
+                        <Button onClick={() => handleUpdateStatus('Offered')} className="text-xs py-2 w-full font-bold bg-emerald-600 hover:bg-emerald-700 text-white border-none">
+                          🏆 Extend Offer
+                        </Button>
+                        <Button onClick={() => handleUpdateStatus('Rejected')} variant="danger" className="text-xs py-2 w-full font-bold">
+                          ✗ Reject
+                        </Button>
+                        {reconsidering && (
+                          <button
+                            type="button"
+                            onClick={() => setReconsidering(false)}
+                            className="text-[10px] text-slate-400 hover:text-slate-600 font-semibold cursor-pointer text-center mt-1 transition-colors"
+                          >
+                            ← Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    // Focused next-step view
+                    <div className="flex flex-col gap-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">NEXT STEPS</span>
+                      <div className="grid grid-cols-1 gap-2">
+                        {status === 'Reviewed' && (
+                          <Button onClick={() => handleUpdateStatus('Shortlisted')} variant="primary" className="text-xs py-2 w-full font-bold">
+                            ★ Shortlist Candidate
+                          </Button>
+                        )}
+                        {(status === 'Reviewed' || status === 'Shortlisted') && (
+                          <Button
+                            onClick={() => handleUpdateStatus('Interview')}
+                            variant={status === 'Shortlisted' ? 'primary' : 'outline'}
+                            className="text-xs py-2 w-full font-bold"
+                          >
+                            📅 Schedule Interview
+                          </Button>
+                        )}
+                        {!['Offered', 'Rejected'].includes(status) && (
+                          <>
+                            <Button onClick={() => handleUpdateStatus('Offered')} className="text-xs py-2 w-full font-bold bg-emerald-600 hover:bg-emerald-700 text-white border-none">
+                              🏆 Extend Offer
+                            </Button>
+                            <Button onClick={() => handleUpdateStatus('Rejected')} variant="danger" className="text-xs py-2 w-full font-bold">
+                              ✗ Reject
+                            </Button>
+                          </>
+                        )}
+                        {['Offered', 'Rejected'].includes(status) && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setReconsidering(true)}
+                            className="text-xs py-2 w-full font-bold"
+                          >
+                            ↩ Reconsider Decision
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardBody>
             </Card>
@@ -454,9 +515,9 @@ const DashboardCompany = () => {
                             <IoRibbonOutline size={12} /> Score: {sub.score}
                           </div>
                         )}
-                        {getStatusBadge(sub.status)}
+                        {getStatusBadge(localStatuses[sub.id] ?? sub.status)}
                         <Button size="sm" onClick={() => handleOpenReviewPage(sub)}>
-                          {sub.status === 'Applied' ? 'Review Solution' : 'View Pipeline'}
+                          {(localStatuses[sub.id] ?? sub.status) === 'Applied' ? 'Review Solution' : 'View Pipeline'}
                         </Button>
                       </div>
                     </div>
