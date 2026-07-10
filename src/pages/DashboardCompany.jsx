@@ -240,6 +240,13 @@ const DashboardCompany = () => {
                       <IoOpenOutline size={12} className="text-slate-400" />
                     </a>
                   )}
+                  {sub.fileUrl && (
+                    <a href={sub.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-emerald-600 text-emerald-500 transition-colors cursor-pointer">
+                      <span>📎</span>
+                      <span>View Uploaded File</span>
+                      <IoOpenOutline size={12} className="text-slate-400" />
+                    </a>
+                  )}
                 </div>
 
                 <div className="bg-slate-50 rounded-xl p-4 border border-slate-100/50">
@@ -463,6 +470,11 @@ const DashboardCompany = () => {
                       {sub.liveUrl && (
                         <a href={sub.liveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer">
                           <IoOpenOutline size={14} className="text-primary" /> Live Demo <IoOpenOutline size={10} />
+                        </a>
+                      )}
+                      {sub.fileUrl && (
+                        <a href={sub.fileUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-emerald-600 text-emerald-500 transition-colors cursor-pointer">
+                          <span>📎</span> Uploaded File <IoOpenOutline size={10} />
                         </a>
                       )}
                     </div>

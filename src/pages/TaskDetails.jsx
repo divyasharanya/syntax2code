@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTasks } from '../context/TaskContext';
 import { useAuth } from '../context/AuthContext';
+import { uploadFile } from '../services/submissionService';
 import Button from '../components/ui/Button';
 import Card, { CardBody, CardHeader } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -18,8 +19,11 @@ const TaskDetails = () => {
   const task = tasks.find((t) => t.id === id);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [formData, setFormData] = useState({ githubUrl: '', liveUrl: '', notes: '' });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const fileInputRef = useRef(null);
 
   if (!task) {
     return (
@@ -54,19 +58,32 @@ const TaskDetails = () => {
     e.preventDefault();
     setError('');
 
-    // Validations
     if (!formData.githubUrl.toLowerCase().includes('github.com/')) {
       setError('Please provide a valid GitHub repository URL.');
       return;
     }
 
-    const res = await submitTask(task.id, formData);
+    let fileUrl = null;
+    if (selectedFile) {
+      setUploadingFile(true);
+      try {
+        fileUrl = await uploadFile(selectedFile);
+      } catch (uploadErr) {
+        setUploadingFile(false);
+        setError('File upload failed: ' + (uploadErr.message || 'Please try again.'));
+        return;
+      }
+      setUploadingFile(false);
+    }
+
+    const res = await submitTask(task.id, { ...formData, fileUrl });
     if (res.success) {
       setSuccess(true);
       setTimeout(() => {
         setIsSubmitModalOpen(false);
         setSuccess(false);
         setFormData({ githubUrl: '', liveUrl: '', notes: '' });
+        setSelectedFile(null);
       }, 1500);
     } else {
       setError(res.error || 'Failed to submit solution');
@@ -288,12 +305,60 @@ const TaskDetails = () => {
               required
             />
 
+            {/* ── File Upload (optional) ── */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-slate-600">
+                Supporting File <span className="font-normal text-slate-400">(optional — PDF, zip, image, etc.)</span>
+              </label>
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files[0];
+                  if (file) setSelectedFile(file);
+                }}
+                className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center cursor-pointer hover:border-primary/40 hover:bg-primary/2 transition-all"
+              >
+                {selectedFile ? (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-700 truncate">{selectedFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setSelectedFile(null); }}
+                      className="text-[10px] text-red-400 hover:text-red-600 font-bold flex-shrink-0 cursor-pointer"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-slate-400 text-lg">📎</span>
+                    <p className="text-xs text-slate-500 font-medium">Drop a file here or <span className="text-primary font-bold">browse</span></p>
+                    <p className="text-[10px] text-slate-400">PDF, zip, images up to 10MB</p>
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => setSelectedFile(e.target.files[0] || null)}
+                  accept=".pdf,.zip,.rar,.png,.jpg,.jpeg,.gif,.doc,.docx,.txt"
+                />
+              </div>
+            </div>
+
             <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 mt-2">
-              <Button variant="outline" onClick={() => setIsSubmitModalOpen(false)}>
+              <Button variant="outline" type="button" onClick={() => setIsSubmitModalOpen(false)} disabled={uploadingFile}>
                 Cancel
               </Button>
-              <Button type="submit">
-                Submit Files
+              <Button type="submit" disabled={uploadingFile}>
+                {uploadingFile ? (
+                  <span className="flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Uploading file...
+                  </span>
+                ) : 'Submit Files'}
               </Button>
             </div>
           </form>
