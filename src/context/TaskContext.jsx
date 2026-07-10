@@ -175,6 +175,38 @@ export const TaskProvider = ({ children }) => {
     [user, submissions]
   );
 
+  // ─── Auto-reject candidate submissions when task deadline has passed ────────
+  // Fires whenever the submissions list updates (onSnapshot). Checks every
+  // 'Applied' submission: if its stored taskDeadline is in the past, flips
+  // status to 'Rejected'. The Firestore rule allows candidates to self-reject
+  // (only the status field, only to 'Rejected') so no permission issue.
+  useEffect(() => {
+    if (!user?.uid || user.role !== 'candidate') return;
+    if (submissions.length === 0) return;
+
+    const now = new Date();
+
+    const expired = submissions.filter((sub) => {
+      if (sub.status !== 'Applied') return false;
+      if (!sub.taskDeadline) return false;
+      const dl = sub.taskDeadline.toDate
+        ? sub.taskDeadline.toDate()
+        : new Date(sub.taskDeadline);
+      return dl <= now;
+    });
+
+    if (expired.length === 0) return;
+
+    expired.forEach(async (sub) => {
+      try {
+        await updateDoc(doc(db, 'submissions', sub.id), { status: 'Rejected' });
+        console.info(`Auto-rejected submission ${sub.id} (deadline passed for task: ${sub.taskTitle})`);
+      } catch (err) {
+        console.warn(`Auto-reject failed for submission ${sub.id}:`, err.message);
+      }
+    });
+  }, [user?.uid, user?.role, submissions]);
+
   // ─── reviewSubmission (company updates status/feedback/score) ──────────────
   const reviewSubmission = useCallback(
     async (submissionId, status, reviewData) => {

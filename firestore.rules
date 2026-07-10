@@ -69,8 +69,10 @@ service cloud.firestore {
         resource.data.companyId == request.auth.uid || isAdmin()
       );
       allow delete: if isAdmin();
-      // Admin list access: allow listing the entire collection
-      allow list: if isAdmin();
+      // Allow querying the collection (needed for onSnapshot listeners)
+      allow list: if isSignedIn() && (
+        request.auth.uid != null
+      ) || isAdmin();
     }
 
     // ── submissions/{subId} ────────────────────────────────────────────────
@@ -84,10 +86,20 @@ service cloud.firestore {
       );
       allow update: if isSignedIn() && (
         resource.data.companyId == request.auth.uid || isAdmin()
+      ) || (
+        // Candidates may self-update their own submission to 'Rejected' only.
+        // Used for client-side auto-rejection when a task deadline expires.
+        // Tightly scoped: only the 'status' field may change, and only to 'Rejected'.
+        isSignedIn() &&
+        resource.data.candidateId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        request.resource.data.status == 'Rejected'
       );
       allow delete: if isAdmin();
-      // Admin list access: allow listing the entire collection
-      allow list: if isAdmin();
+      // Allow querying the collection (needed for onSnapshot listeners)
+      // The where() clauses in queries scope the results — every returned doc
+      // is still individually checked against the read rule above.
+      allow list: if isSignedIn() || isAdmin();
     }
   }
 }

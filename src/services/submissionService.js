@@ -72,6 +72,7 @@ export const submitWork = async (taskId, candidateId, submissionData) => {
   const subDoc = {
     taskId,
     taskTitle: task.title,
+    taskDeadline: task.deadline || null,      // stored for client-side auto-rejection
     companyId: task.companyId,
     companyName: task.companyName || '',
     candidateId,
