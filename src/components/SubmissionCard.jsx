@@ -188,6 +188,18 @@ const SubmissionCard = ({ submission, showCandidateInfo = false }) => {
               <IoOpenOutline size={12} className="text-slate-400" />
             </a>
           )}
+          {submission.fileUrl && (
+            <a
+              href={submission.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 hover:text-emerald-600 text-emerald-500 transition-colors cursor-pointer"
+            >
+              <span>📎</span>
+              <span>Uploaded File</span>
+              <IoOpenOutline size={12} className="text-slate-400" />
+            </a>
+          )}
         </div>
 
         {/* Candidate Submission Notes */}
