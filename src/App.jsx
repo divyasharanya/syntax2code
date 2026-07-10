@@ -19,11 +19,8 @@ import TaskDetails from './pages/TaskDetails';
 import DashboardCandidate from './pages/DashboardCandidate';
 import DashboardCompany from './pages/DashboardCompany';
 import CreateTask from './pages/CreateTask';
-<<<<<<< HEAD
-import AdminDashboard from './pages/AdminDashboard';
-=======
 import Profile from './pages/Profile';
->>>>>>> 1c9f2a0 (Add profile management UI and theme support)
+import AdminDashboard from './pages/AdminDashboard';
 import NotFound from './pages/NotFound';
 
 // Route guards
@@ -32,19 +29,6 @@ import AdminRoute from './components/AdminRoute';
 function App() {
   return (
     <BrowserRouter>
-<<<<<<< HEAD
-      <AuthProvider>
-        <TaskProvider>
-          <Routes>
-            <Route path="/" element={<RootLayout />}>
-              {/* Public Routes */}
-              <Route index element={<Home />} />
-              <Route path="login" element={<Login />} />
-              <Route path="register" element={<Register />} />
-              <Route path="choose-role" element={<ChooseRole />} />
-              <Route path="tasks" element={<Tasks />} />
-              <Route path="tasks/:id" element={<TaskDetails />} />
-=======
       <ThemeProvider>
         <ToastProvider>
           <AuthProvider>
@@ -55,34 +39,25 @@ function App() {
                   <Route index element={<Home />} />
                   <Route path="login" element={<Login />} />
                   <Route path="register" element={<Register />} />
+                  <Route path="choose-role" element={<ChooseRole />} />
                   <Route path="tasks" element={<Tasks />} />
                   <Route path="tasks/:id" element={<TaskDetails />} />
->>>>>>> 1c9f2a0 (Add profile management UI and theme support)
 
-                  {/* Company Protected Creation Route */}
+                  {/* Company task creation */}
                   <Route path="tasks/create" element={<CreateTask />} />
 
-<<<<<<< HEAD
-              {/* Admin — protected by AdminRoute guard */}
-              <Route
-                path="admin"
-                element={
-                  <AdminRoute>
-                    <AdminDashboard />
-                  </AdminRoute>
-                }
-              />
-
-              {/* Protected Dashboards (DashboardLayout does auth checks) */}
-              <Route path="dashboard" element={<DashboardLayout />}>
-                <Route index element={<Navigate to="/" replace />} />
-                <Route path="candidate" element={<DashboardCandidate />} />
-                <Route path="company" element={<DashboardCompany />} />
-              </Route>
-=======
-                  {/* Profile Route */}
+                  {/* Profile */}
                   <Route path="profile" element={<Profile />} />
->>>>>>> 1c9f2a0 (Add profile management UI and theme support)
+
+                  {/* Admin — protected by AdminRoute guard */}
+                  <Route
+                    path="admin"
+                    element={
+                      <AdminRoute>
+                        <AdminDashboard />
+                      </AdminRoute>
+                    }
+                  />
 
                   {/* Protected Dashboards (DashboardLayout does auth checks) */}
                   <Route path="dashboard" element={<DashboardLayout />}>

@@ -200,11 +200,8 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
-<<<<<<< HEAD
         signInWithGoogle,
-=======
         changePassword,
->>>>>>> 1c9f2a0 (Add profile management UI and theme support)
       }}
     >
       {children}
