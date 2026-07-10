@@ -30,7 +30,12 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isSignedIn() || isAdmin();
       allow create: if isOwner(uid);
-      allow update: if isOwner(uid) || isAdmin();
+      // Owner or admin can update any field.
+      // Companies may update only the 'points' field (candidate point awards on review).
+      allow update: if isOwner(uid) || isAdmin() || (
+        isCompany() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['points'])
+      );
       allow delete: if isAdmin();
     }
 

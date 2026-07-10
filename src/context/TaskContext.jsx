@@ -203,10 +203,15 @@ export const TaskProvider = ({ children }) => {
           const task = tasks.find((t) => t.id === currentSub.taskId);
           const pointsToAward = task ? task.reward : 100;
 
-          // Update candidate's points in their Firestore profile
-          await updateDoc(doc(db, 'users', currentSub.candidateId), {
-            points: pointsToAward,
-          });
+          // Secondary write — wrapped separately so a points failure never
+          // surfaces as a submission review failure to the company.
+          try {
+            await updateDoc(doc(db, 'users', currentSub.candidateId), {
+              points: pointsToAward,
+            });
+          } catch (pointsErr) {
+            console.warn('Points award failed (non-critical):', pointsErr.message);
+          }
         }
 
         // onSnapshot will update submissions array automatically
