@@ -105,14 +105,15 @@ class SubmissionSerializer(serializers.ModelSerializer):
     companyName = serializers.ReadOnlyField(source='application.task.company.company_name')
     status = serializers.ReadOnlyField(source='application.status')
     
-    githubUrl = serializers.URLField(source='github_url')
-    liveUrl = serializers.URLField(source='live_url', required=False, allow_blank=True)
+    githubUrl = serializers.URLField(source='github_url', required=False, allow_blank=True, allow_null=True)
+    liveUrl = serializers.URLField(source='live_url', required=False, allow_blank=True, allow_null=True)
+    file = serializers.FileField(required=False, allow_null=True)
 
     class Meta:
         model = Submission
         fields = [
             'id', 'application_id', 'candidateId', 'candidateName', 'candidateAvatar',
             'taskId', 'taskTitle', 'companyName', 'githubUrl', 'liveUrl',
-            'notes', 'submitted_at', 'status', 'feedback', 'score'
+            'notes', 'submitted_at', 'status', 'feedback', 'score', 'file'
         ]
         read_only_fields = ['id', 'application_id', 'submitted_at', 'status']

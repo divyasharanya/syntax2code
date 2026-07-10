@@ -39,7 +39,12 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isCompany() || isAdmin();
       allow update: if isSignedIn() && (
+        // Company owner or admin may update any field on their task.
         resource.data.companyId == request.auth.uid || isAdmin()
+        ||
+        // Any signed-in user (e.g. a candidate submitting work) may increment
+        // applicantsCount — but ONLY that field, nothing else.
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applicantsCount'])
       );
       allow delete: if isSignedIn() && (
         resource.data.companyId == request.auth.uid || isAdmin()

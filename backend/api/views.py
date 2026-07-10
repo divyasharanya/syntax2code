@@ -1,5 +1,6 @@
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets, permissions
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
@@ -108,6 +109,17 @@ class TaskViewSet(viewsets.ModelViewSet):
             raise permissions.exceptions.PermissionDenied("Only company users can post tasks.")
         serializer.save(company=self.request.user)
 
+    def perform_update(self, serializer):
+        task = self.get_object()
+        if task.company != self.request.user:
+            raise permissions.exceptions.PermissionDenied("You can only edit your own tasks.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.company != self.request.user:
+            raise permissions.exceptions.PermissionDenied("You can only delete your own tasks.")
+        instance.delete()
+
 
 class ApplyView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -131,6 +143,7 @@ class ApplyView(APIView):
 
 class SubmitView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request, task_id):
         if request.user.role != 'candidate':
@@ -143,18 +156,23 @@ class SubmitView(APIView):
         if hasattr(application, 'submission'):
             return Response({'error': 'You have already submitted a solution for this task.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        github_url = request.data.get('githubUrl')
+        github_url = request.data.get('githubUrl', '')
         live_url = request.data.get('liveUrl', '')
         notes = request.data.get('notes', '')
+        file = request.FILES.get('file')
 
-        if not github_url:
-            return Response({'error': 'GitHub repository URL is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not github_url and not file:
+            return Response(
+                {'error': 'Please provide a GitHub URL or upload a file (or both).'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         submission = Submission.objects.create(
             application=application,
             github_url=github_url,
             live_url=live_url,
-            notes=notes
+            notes=notes,
+            file=file
         )
         serializer = SubmissionSerializer(submission)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
