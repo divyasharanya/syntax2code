@@ -17,7 +17,11 @@ import TaskDetails from './pages/TaskDetails';
 import DashboardCandidate from './pages/DashboardCandidate';
 import DashboardCompany from './pages/DashboardCompany';
 import CreateTask from './pages/CreateTask';
+import AdminDashboard from './pages/AdminDashboard';
 import NotFound from './pages/NotFound';
+
+// Route guards
+import AdminRoute from './components/AdminRoute';
 
 function App() {
   return (
@@ -36,6 +40,16 @@ function App() {
 
               {/* Company Protected Creation Route */}
               <Route path="tasks/create" element={<CreateTask />} />
+
+              {/* Admin — protected by AdminRoute guard */}
+              <Route
+                path="admin"
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                }
+              />
 
               {/* Protected Dashboards (DashboardLayout does auth checks) */}
               <Route path="dashboard" element={<DashboardLayout />}>

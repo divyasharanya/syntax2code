@@ -9,30 +9,61 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { ADMIN_EMAIL } from '../config';
 
 const AuthContext = createContext(null);
 
+// ─── Helper: determine effective role ────────────────────────────────────────
+// Admin is granted purely by email match — never via Firestore role field.
+function resolveRole(email, firestoreRole) {
+  if (ADMIN_EMAIL && email === ADMIN_EMAIL) return 'admin';
+  return firestoreRole ?? undefined; // null stays null (needs role pick), undefined = not loaded
+}
+
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);   // enriched user object (Firebase user + Firestore profile)
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // ─── Listen for Firebase Auth state changes ───────────────────────────────
+  // ─── Listen for Firebase Auth state changes ────────────────────────────────
+  // FIX: All profile creation and role resolution lives HERE — not in signInWithGoogle.
+  // This eliminates the race condition where onAuthStateChanged fired before
+  // signInWithGoogle could finish writing the Firestore doc.
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Fetch the Firestore profile to get role, name, etc.
         try {
-          const profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (profileSnap.exists()) {
-            setUser({ uid: firebaseUser.uid, email: firebaseUser.email, ...profileSnap.data() });
-          } else {
-            // Profile doc not created yet — use minimal data
-            setUser({ uid: firebaseUser.uid, email: firebaseUser.email });
+          let profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+
+          if (!profileSnap.exists()) {
+            // First-time sign-in (Google or otherwise without a profile yet).
+            // Create a minimal profile with role: null so the user is sent to /choose-role.
+            const minimalProfile = {
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              email: firebaseUser.email || '',
+              role: null,
+              bio: '',
+              active: true,
+              createdAt: serverTimestamp(),
+            };
+            await setDoc(doc(db, 'users', firebaseUser.uid), minimalProfile);
+            // Re-read so we get the server timestamp back
+            profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
           }
+
+          const profileData = profileSnap.data() || {};
+          const effectiveRole = resolveRole(firebaseUser.email, profileData.role);
+
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            ...profileData,
+            role: effectiveRole, // Admin override applied here
+          });
         } catch (err) {
-          console.error('Error fetching user profile:', err);
-          setUser({ uid: firebaseUser.uid, email: firebaseUser.email });
+          console.error('Error fetching/creating user profile:', err);
+          // Fallback: set minimal user so the app doesn't hang on loading
+          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: undefined });
         }
       } else {
         setUser(null);
@@ -43,12 +74,12 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
-  // ─── Login ────────────────────────────────────────────────────────────────
+  // ─── Login ─────────────────────────────────────────────────────────────────
   const login = async (email, password) => {
     setError('');
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged will update `user` automatically
+      // onAuthStateChanged handles everything — including admin role resolution
       return { success: true };
     } catch (err) {
       const message = friendlyAuthError(err.code);
@@ -57,17 +88,15 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ─── Register ─────────────────────────────────────────────────────────────
+  // ─── Register ──────────────────────────────────────────────────────────────
   const register = async (registerData) => {
     setError('');
     const { name, email, password, role, companyName, title } = registerData;
 
     try {
-      // 1. Create Firebase Auth user
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       const { uid } = credential.user;
 
-      // 2. Build the Firestore profile doc
       const baseProfile = {
         name,
         email,
@@ -83,7 +112,7 @@ export const AuthProvider = ({ children }) => {
               title: title || 'Developer',
               skills: [],
               portfolioUrl: '',
-              avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+              avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
               points: 0,
             }
           : {
@@ -93,12 +122,8 @@ export const AuthProvider = ({ children }) => {
               companyUrl: '',
             };
 
-      const profile = { ...baseProfile, ...roleProfile };
-
-      // 3. Write users/{uid} document
-      await setDoc(doc(db, 'users', uid), profile);
-
-      // onAuthStateChanged will pick up the new user + profile automatically
+      // Write the full profile — onAuthStateChanged will see it on next read
+      await setDoc(doc(db, 'users', uid), { ...baseProfile, ...roleProfile });
       return { success: true };
     } catch (err) {
       const message = friendlyAuthError(err.code);
@@ -107,35 +132,19 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ─── Logout ───────────────────────────────────────────────────────────────
-  // ─── Google Sign-In ───────────────────────────────────────────────────────
+  // ─── Google Sign-In ────────────────────────────────────────────────────────
+  // SIMPLIFIED: only opens the popup. Profile creation + role resolution is
+  // handled entirely in onAuthStateChanged above — no race condition possible.
   const signInWithGoogle = async () => {
     setError('');
     try {
       const provider = new GoogleAuthProvider();
-      const credential = await signInWithPopup(auth, provider);
-      const { uid, displayName, email } = credential.user;
-
-      // Check if a Firestore profile already exists for this Google user
-      const profileSnap = await getDoc(doc(db, 'users', uid));
-      if (!profileSnap.exists()) {
-        // First-time Google sign-in: create a minimal profile.
-        // role is null — user will be sent to /choose-role to pick it.
-        await setDoc(doc(db, 'users', uid), {
-          name: displayName || email?.split('@')[0] || 'User',
-          email: email || '',
-          role: null,
-          bio: '',
-          active: true,
-          createdAt: serverTimestamp(),
-        });
-      }
-      // onAuthStateChanged will update `user` state automatically
+      await signInWithPopup(auth, provider);
+      // onAuthStateChanged fires, fetches/creates the profile, sets user state
       return { success: true };
     } catch (err) {
-      // Ignore popup-closed-by-user
       if (err.code === 'auth/popup-closed-by-user') {
-        return { success: false, error: null };
+        return { success: false, error: null }; // User dismissed — not an error
       }
       const message = friendlyAuthError(err.code);
       setError(message);
@@ -143,6 +152,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ─── Logout ────────────────────────────────────────────────────────────────
   const logout = async () => {
     setError('');
     try {
@@ -153,12 +163,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ─── Update Profile ───────────────────────────────────────────────────────
+  // ─── Update Profile ────────────────────────────────────────────────────────
   const updateProfile = async (updatedFields) => {
     if (!user) return { success: false };
     try {
       await updateDoc(doc(db, 'users', user.uid), updatedFields);
-      setUser((prev) => ({ ...prev, ...updatedFields }));
+      // Re-apply admin override in case role field was updated
+      const newRole = resolveRole(user.email, updatedFields.role ?? user.role);
+      setUser((prev) => ({ ...prev, ...updatedFields, role: newRole }));
       return { success: true };
     } catch (err) {
       console.error('Profile update error:', err);
@@ -166,7 +178,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ─── Context value (same API as before) ───────────────────────────────────
   return (
     <AuthContext.Provider
       value={{
@@ -193,7 +204,7 @@ export const useAuth = () => {
   return context;
 };
 
-// ─── Helper: map Firebase error codes to readable messages ─────────────────
+// ─── Helper: map Firebase error codes to readable messages ───────────────────
 function friendlyAuthError(code) {
   switch (code) {
     case 'auth/invalid-credential':

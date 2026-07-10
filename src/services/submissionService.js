@@ -10,21 +10,19 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-
-// ─── Cloudinary config ─────────────────────────────────────────────────────
-// Set your Cloudinary cloud name and unsigned upload preset here.
-// Create an unsigned upload preset in Cloudinary Dashboard →
-// Settings → Upload → Upload presets → Add unsigned preset.
-const CLOUDINARY_CLOUD_NAME = 'YOUR_CLOUD_NAME'; // TODO: replace with your cloud name
-const CLOUDINARY_UPLOAD_PRESET = 'YOUR_UPLOAD_PRESET'; // TODO: replace with your unsigned preset name
+import { CLOUDINARY_CLOUD_NAME, CLOUDINARY_UPLOAD_PRESET } from '../config';
 
 /**
  * Upload a file to Cloudinary using an unsigned upload preset.
+ * Credentials are read from VITE_CLOUDINARY_* environment variables.
  * @param {File} file
  * @returns {string} secure_url of the uploaded file
  */
 export const uploadFile = async (file) => {
   if (!file) throw new Error('No file provided.');
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+    throw new Error('Cloudinary credentials are not configured. Check your .env file.');
+  }
 
   const formData = new FormData();
   formData.append('file', file);

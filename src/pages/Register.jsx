@@ -34,7 +34,8 @@ const Register = () => {
   // Redirect to correct dashboard once Firebase sets the user (post-registration)
   useEffect(() => {
     if (!loading && user) {
-      if (user.role === 'company') navigate('/dashboard/company', { replace: true });
+      if (user.role === 'admin') navigate('/admin', { replace: true });
+      else if (user.role === 'company') navigate('/dashboard/company', { replace: true });
       else if (user.role === 'candidate') navigate('/dashboard/candidate', { replace: true });
       else if (user.role === null) navigate('/choose-role', { replace: true });
     }

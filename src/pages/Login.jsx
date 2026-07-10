@@ -17,15 +17,16 @@ const Login = () => {
   // Redirect once Firebase resolves the user + Firestore profile
   useEffect(() => {
     if (!loading && user) {
-      if (user.role === 'company') {
+      if (user.role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else if (user.role === 'company') {
         navigate('/dashboard/company', { replace: true });
       } else if (user.role === 'candidate') {
         navigate('/dashboard/candidate', { replace: true });
       } else if (user.role === null) {
-        // Google user who hasn't picked a role yet
         navigate('/choose-role', { replace: true });
       }
-      // role === undefined means profile still loading — wait
+      // role === undefined → profile still resolving, wait
     }
   }, [user, loading, navigate]);
 

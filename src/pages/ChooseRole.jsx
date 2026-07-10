@@ -14,12 +14,14 @@ const ChooseRole = () => {
     if (!loading) {
       if (!user) {
         navigate('/login', { replace: true });
+      } else if (user.role === 'admin') {
+        navigate('/admin', { replace: true });
       } else if (user.role === 'company') {
         navigate('/dashboard/company', { replace: true });
       } else if (user.role === 'candidate') {
         navigate('/dashboard/candidate', { replace: true });
       }
-      // If role is null/undefined, stay on this page
+      // role === null → stay here and pick
     }
   }, [user, loading, navigate]);
 
