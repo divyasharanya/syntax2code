@@ -80,12 +80,13 @@ class Application(models.Model):
 
 class Submission(models.Model):
     application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name='submission')
-    github_url = models.URLField()
+    github_url = models.URLField(blank=True)
     live_url = models.URLField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
     feedback = models.TextField(blank=True, null=True)
     score = models.IntegerField(blank=True, null=True)
+    file = models.FileField(upload_to='submissions/', blank=True, null=True)
 
     def __str__(self):
         return f"Submission for {self.application}"
