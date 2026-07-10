@@ -34,7 +34,7 @@ const CreateTask = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -66,7 +66,7 @@ ${formData.description}
 - A GitHub repository containing the complete, working React frontend project.
 - A live deployment URL matching the guidelines.`;
 
-    const res = addTask({
+    const res = await addTask({
       title: formData.title,
       difficulty: formData.difficulty,
       duration: `${durationNum}h`,

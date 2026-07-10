@@ -19,7 +19,7 @@ const DashboardCandidate = () => {
   const { submissions } = useTasks();
 
   // Filter submissions corresponding to this candidate
-  const candidateSubmissions = submissions.filter((sub) => sub.candidateId === user.id);
+  const candidateSubmissions = submissions.filter((sub) => sub.candidateId === user.uid);
 
   const stats = {
     points: user.points || 0,

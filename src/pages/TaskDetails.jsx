@@ -32,9 +32,9 @@ const TaskDetails = () => {
     );
   }
 
-  // Find candidate's submission for this task (if logged in)
+  // Find candidate's existing submission for this task
   const candidateSubmission = user && user.role === 'candidate'
-    ? submissions.find((sub) => sub.taskId === task.id && sub.candidateId === user.id)
+    ? submissions.find((sub) => sub.taskId === task.id && sub.candidateId === user.uid)
     : null;
 
   const handleChange = (e) => {
@@ -50,7 +50,7 @@ const TaskDetails = () => {
     setIsSubmitModalOpen(true);
   };
 
-  const handleSubmitSolution = (e) => {
+  const handleSubmitSolution = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -60,7 +60,7 @@ const TaskDetails = () => {
       return;
     }
 
-    const res = submitTask(task.id, formData);
+    const res = await submitTask(task.id, formData);
     if (res.success) {
       setSuccess(true);
       setTimeout(() => {
@@ -221,7 +221,7 @@ const TaskDetails = () => {
                       Submit Solution
                     </Button>
                   )
-                ) : user.id === task.companyId ? (
+                ) : user.uid === task.companyId ? (
                   <Link to="/dashboard/company" className="w-full block">
                     <Button className="w-full">Manage Submissions</Button>
                   </Link>

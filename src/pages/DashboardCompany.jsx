@@ -16,8 +16,8 @@ const DashboardCompany = () => {
   const [reviewForm, setReviewForm] = useState({ score: '90', feedback: '' });
   const [error, setError] = useState('');
 
-  // Get tasks posted by this company
-  const companyTasks = tasks.filter((t) => t.companyId === user.id);
+  // Get tasks posted by this company (uid-based match)
+  const companyTasks = tasks.filter((t) => t.companyId === user.uid);
   const companyTaskIds = companyTasks.map((t) => t.id);
 
   // Get submissions corresponding to this company's tasks
@@ -38,7 +38,7 @@ const DashboardCompany = () => {
     setError('');
   };
 
-  const handleUpdateStatus = (newStatus) => {
+  const handleUpdateStatus = async (newStatus) => {
     setError('');
 
     if (Number(reviewForm.score) < 0 || Number(reviewForm.score) > 100) {
@@ -51,7 +51,7 @@ const DashboardCompany = () => {
       return;
     }
 
-    const res = reviewSubmission(selectedSubId, newStatus, {
+    const res = await reviewSubmission(selectedSubId, newStatus, {
       score: reviewForm.score,
       feedback: reviewForm.feedback,
     });
