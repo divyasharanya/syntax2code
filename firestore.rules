@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isCompany() {
+      return isSignedIn() && getUserRole() == 'company';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserRole() == 'admin';
+    }
+
+    // ── users/{uid} ────────────────────────────────────────────────────────
+    // Any signed-in user can read profiles (needed for company name/logo display)
+    // Only the owner can write their own profile
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid);
+      allow update: if isOwner(uid) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── tasks/{taskId} ─────────────────────────────────────────────────────
+    // Public read (unauthenticated users can browse tasks)
+    // Only company role can create; only the task owner company can update/delete
+    match /tasks/{taskId} {
+      allow read: if true;
+      allow create: if isCompany();
+      allow update: if isSignedIn() && (
+        resource.data.companyId == request.auth.uid || isAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.companyId == request.auth.uid || isAdmin()
+      );
+    }
+
+    // ── applications/{appId} ───────────────────────────────────────────────
+    // Candidate creates their own application
+    // Both the candidate and the company owning the task can read
+    // Only the company can update status
+    match /applications/{appId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.candidateId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.candidateId == request.auth.uid ||
+        resource.data.companyId == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.companyId == request.auth.uid || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── submissions/{subId} ────────────────────────────────────────────────
+    // Candidate creates their own submission
+    // Both the candidate and the owning company can read
+    // Only the company can update (review/score/feedback)
+    match /submissions/{subId} {
+      allow create: if isSignedIn() &&
+        request.resource.data.candidateId == request.auth.uid;
+      allow read: if isSignedIn() && (
+        resource.data.candidateId == request.auth.uid ||
+        resource.data.companyId == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.companyId == request.auth.uid || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}
