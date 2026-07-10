@@ -178,6 +178,23 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const changePassword = (currentPassword, newPassword) => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+
+    const fullUser = users.find((u) => u.id === user.id);
+    if (!fullUser) return { success: false, error: 'User not found' };
+
+    if (fullUser.password !== currentPassword) {
+      return { success: false, error: 'Current password is incorrect' };
+    }
+
+    setUsers((prevUsers) =>
+      prevUsers.map((u) => (u.id === user.id ? { ...u, password: newPassword } : u))
+    );
+
+    return { success: true };
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -188,7 +205,11 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
+<<<<<<< HEAD
         signInWithGoogle,
+=======
+        changePassword,
+>>>>>>> 1c9f2a0 (Add profile management UI and theme support)
       }}
     >
       {children}

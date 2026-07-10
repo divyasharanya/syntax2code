@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { TaskProvider } from './context/TaskContext';
+import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './context/ToastContext';
 
 // Layouts
 import RootLayout from './layouts/RootLayout';
@@ -17,7 +19,11 @@ import TaskDetails from './pages/TaskDetails';
 import DashboardCandidate from './pages/DashboardCandidate';
 import DashboardCompany from './pages/DashboardCompany';
 import CreateTask from './pages/CreateTask';
+<<<<<<< HEAD
 import AdminDashboard from './pages/AdminDashboard';
+=======
+import Profile from './pages/Profile';
+>>>>>>> 1c9f2a0 (Add profile management UI and theme support)
 import NotFound from './pages/NotFound';
 
 // Route guards
@@ -26,6 +32,7 @@ import AdminRoute from './components/AdminRoute';
 function App() {
   return (
     <BrowserRouter>
+<<<<<<< HEAD
       <AuthProvider>
         <TaskProvider>
           <Routes>
@@ -37,10 +44,25 @@ function App() {
               <Route path="choose-role" element={<ChooseRole />} />
               <Route path="tasks" element={<Tasks />} />
               <Route path="tasks/:id" element={<TaskDetails />} />
+=======
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <TaskProvider>
+              <Routes>
+                <Route path="/" element={<RootLayout />}>
+                  {/* Public Routes */}
+                  <Route index element={<Home />} />
+                  <Route path="login" element={<Login />} />
+                  <Route path="register" element={<Register />} />
+                  <Route path="tasks" element={<Tasks />} />
+                  <Route path="tasks/:id" element={<TaskDetails />} />
+>>>>>>> 1c9f2a0 (Add profile management UI and theme support)
 
-              {/* Company Protected Creation Route */}
-              <Route path="tasks/create" element={<CreateTask />} />
+                  {/* Company Protected Creation Route */}
+                  <Route path="tasks/create" element={<CreateTask />} />
 
+<<<<<<< HEAD
               {/* Admin — protected by AdminRoute guard */}
               <Route
                 path="admin"
@@ -57,13 +79,26 @@ function App() {
                 <Route path="candidate" element={<DashboardCandidate />} />
                 <Route path="company" element={<DashboardCompany />} />
               </Route>
+=======
+                  {/* Profile Route */}
+                  <Route path="profile" element={<Profile />} />
+>>>>>>> 1c9f2a0 (Add profile management UI and theme support)
 
-              {/* Fallback 404 */}
-              <Route path="*" element={<NotFound />} />
-            </Route>
-          </Routes>
-        </TaskProvider>
-      </AuthProvider>
+                  {/* Protected Dashboards (DashboardLayout does auth checks) */}
+                  <Route path="dashboard" element={<DashboardLayout />}>
+                    <Route index element={<Navigate to="/" replace />} />
+                    <Route path="candidate" element={<DashboardCandidate />} />
+                    <Route path="company" element={<DashboardCompany />} />
+                  </Route>
+
+                  {/* Fallback 404 */}
+                  <Route path="*" element={<NotFound />} />
+                </Route>
+              </Routes>
+            </TaskProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }
