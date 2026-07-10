@@ -20,7 +20,7 @@ const RootLayout = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50/50">
+    <div className="flex flex-col min-h-screen bg-slate-50/50 dark:bg-slate-950 transition-colors duration-200">
       <Navbar />
 
       {/* Main Content Area */}

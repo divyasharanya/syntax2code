@@ -23,7 +23,7 @@ const Home = () => {
           </h1>
 
           <p className="text-base md:text-lg text-slate-500 max-w-2xl leading-relaxed">
-            Skip generic applications and automated filters. Complete micro-tasks designed by top engineering teams, showcase your code, and secure direct technical interviews.
+            Skip generic applications and automated filters. Complete all micro-tasks designed by top engineering teams, showcase your code, and secure direct technical interviews.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 mt-4">

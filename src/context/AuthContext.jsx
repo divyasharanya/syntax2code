@@ -17,18 +17,13 @@ const AuthContext = createContext(null);
 // Admin is granted purely by email match — never via Firestore role field.
 function resolveRole(email, firestoreRole) {
   if (ADMIN_EMAIL && email === ADMIN_EMAIL) return 'admin';
-  return firestoreRole ?? undefined; // null stays null (needs role pick), undefined = not loaded
+  return firestoreRole ?? undefined;
 }
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  // ─── Listen for Firebase Auth state changes ────────────────────────────────
-  // FIX: All profile creation and role resolution lives HERE — not in signInWithGoogle.
-  // This eliminates the race condition where onAuthStateChanged fired before
-  // signInWithGoogle could finish writing the Firestore doc.
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -178,6 +173,23 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const changePassword = (currentPassword, newPassword) => {
+    if (!user) return { success: false, error: 'Not authenticated' };
+
+    const fullUser = users.find((u) => u.id === user.id);
+    if (!fullUser) return { success: false, error: 'User not found' };
+
+    if (fullUser.password !== currentPassword) {
+      return { success: false, error: 'Current password is incorrect' };
+    }
+
+    setUsers((prevUsers) =>
+      prevUsers.map((u) => (u.id === user.id ? { ...u, password: newPassword } : u))
+    );
+
+    return { success: true };
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -189,6 +201,7 @@ export const AuthProvider = ({ children }) => {
         logout,
         updateProfile,
         signInWithGoogle,
+        changePassword,
       }}
     >
       {children}
