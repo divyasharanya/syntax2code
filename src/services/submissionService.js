@@ -64,6 +64,11 @@ export const submitWork = async (taskId, candidateId, submissionData) => {
     if (dl <= new Date()) throw new Error('Task deadline has passed. Submissions are closed.');
   }
 
+  // At least one of githubUrl or fileUrl must be present
+  if (!submissionData.githubUrl && !submissionData.fileUrl) {
+    throw new Error('Please provide a GitHub link or upload a file (or both).');
+  }
+
   const subDoc = {
     taskId,
     taskTitle: task.title,

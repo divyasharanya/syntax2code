@@ -7,7 +7,15 @@ import Card, { CardBody, CardHeader } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
 import Input from '../components/ui/Input';
-import { IoTimeOutline, IoWalletOutline, IoPeopleOutline, IoArrowBackOutline, IoChevronForwardOutline, IoShieldCheckmarkOutline, IoAlertCircleOutline, IoLogoGithub, IoOpenOutline } from 'react-icons/io5';
+import { uploadFile } from '../services/submissionService';
+import {
+  IoTimeOutline, IoWalletOutline, IoPeopleOutline,
+  IoArrowBackOutline, IoShieldCheckmarkOutline,
+  IoAlertCircleOutline, IoCloudUploadOutline,
+  IoDocumentOutline, IoCloseCircleOutline,
+} from 'react-icons/io5';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const TaskDetails = () => {
   const { id } = useParams();
@@ -16,8 +24,12 @@ const TaskDetails = () => {
   const { user } = useAuth();
 
   const task = tasks.find((t) => t.id === id);
+
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [formData, setFormData] = useState({ githubUrl: '', liveUrl: '', notes: '' });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileError, setFileError] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
@@ -42,6 +54,28 @@ const TaskDetails = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > MAX_FILE_SIZE) {
+      setFileError(
+        `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is 10 MB.`
+      );
+      setSelectedFile(null);
+      e.target.value = '';
+      return;
+    }
+    setFileError('');
+    setSelectedFile(file);
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setFileError('');
+    const input = document.getElementById('submission-file-input');
+    if (input) input.value = '';
+  };
+
   const handleOpenModal = () => {
     if (!user) {
       navigate('/login');
@@ -54,29 +88,68 @@ const TaskDetails = () => {
     e.preventDefault();
     setError('');
 
-    // Validations
-    if (!formData.githubUrl.toLowerCase().includes('github.com/')) {
-      setError('Please provide a valid GitHub repository URL.');
+    const hasGithub = formData.githubUrl.toLowerCase().includes('github.com/');
+    const hasFile = Boolean(selectedFile);
+
+    // At least one of githubUrl or a file must be provided
+    if (!hasGithub && !hasFile) {
+      setError('Please provide a GitHub link or upload a file (or both).');
       return;
     }
 
-    const res = await submitTask(task.id, formData);
+    // If a URL was typed but is not a valid GitHub URL, reject it
+    if (formData.githubUrl && !hasGithub) {
+      setError('Please provide a valid GitHub repository URL (must include github.com/).');
+      return;
+    }
+
+    setIsUploading(true);
+    let fileUrl = null;
+
+    // Step 1: Upload file to Cloudinary if one was selected.
+    // If this fails, show the error and abort — do NOT create a submission
+    // with a broken/missing file reference.
+    if (hasFile) {
+      try {
+        fileUrl = await uploadFile(selectedFile);
+      } catch (uploadErr) {
+        setError(uploadErr.message || 'File upload failed. Please try again.');
+        setIsUploading(false);
+        return;
+      }
+    }
+
+    // Step 2: Submit work (Firestore write via TaskContext → submitWork)
+    const res = await submitTask(task.id, {
+      githubUrl: formData.githubUrl,
+      liveUrl: formData.liveUrl,
+      notes: formData.notes,
+      fileUrl, // null when no file was selected
+    });
+
+    setIsUploading(false);
+
     if (res.success) {
       setSuccess(true);
       setTimeout(() => {
         setIsSubmitModalOpen(false);
         setSuccess(false);
         setFormData({ githubUrl: '', liveUrl: '', notes: '' });
+        setSelectedFile(null);
       }, 1500);
     } else {
-      setError(res.error || 'Failed to submit solution');
+      setError(res.error || 'Failed to submit solution.');
     }
   };
 
   // Convert markdown-like descriptions into clean paragraphs
   const renderDescription = (desc) => {
     return desc.split('\n\n').map((block, idx) => {
-      if (block.startsWith('### Objective') || block.startsWith('### Requirements') || block.startsWith('### Deliverables')) {
+      if (
+        block.startsWith('### Objective') ||
+        block.startsWith('### Requirements') ||
+        block.startsWith('### Deliverables')
+      ) {
         return (
           <h3 key={idx} className="text-lg font-black text-slate-800 mt-6 mb-3 border-b border-slate-100 pb-1">
             {block.replace('### ', '')}
@@ -88,14 +161,26 @@ const TaskDetails = () => {
         return (
           <ul key={idx} className="list-disc pl-5 space-y-2 text-sm text-slate-600 leading-relaxed my-3">
             {items.map((item, subIdx) => {
-              const cleanedItem = item.replace(/^\d+\.\s+\*\*(.*?)\*\*:\s*/, '<strong>$1</strong>: ').replace(/^-\s*/, '').replace(/`([^`]+)`/g, '<code class="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs text-rose-600">$1</code>');
+              const cleanedItem = item
+                .replace(/^\d+\.\s+\*\*(.*?)\*\*:\s*/, '<strong>$1</strong>: ')
+                .replace(/^-\s*/, '')
+                .replace(/`([^`]+)`/g, '<code class="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs text-rose-600">$1</code>');
               return <li key={subIdx} dangerouslySetInnerHTML={{ __html: cleanedItem }} />;
             })}
           </ul>
         );
       }
       return (
-        <p key={idx} className="text-sm text-slate-600 leading-relaxed my-3" dangerouslySetInnerHTML={{ __html: block.replace(/`([^`]+)`/g, '<code class="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs text-rose-600">$1</code>') }} />
+        <p
+          key={idx}
+          className="text-sm text-slate-600 leading-relaxed my-3"
+          dangerouslySetInnerHTML={{
+            __html: block.replace(
+              /`([^`]+)`/g,
+              '<code class="bg-slate-100 px-1 py-0.5 rounded font-mono text-xs text-rose-600">$1</code>'
+            ),
+          }}
+        />
       );
     });
   };
@@ -104,13 +189,16 @@ const TaskDetails = () => {
     <div className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col gap-6">
       {/* Back navigation */}
       <div>
-        <Link to="/tasks" className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-primary transition-colors">
+        <Link
+          to="/tasks"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-primary transition-colors"
+        >
           <IoArrowBackOutline size={14} /> Back to Challenges
         </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-        {/* Left 2 Columns: Task Description details */}
+        {/* Left 2 Columns: Task Description */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <Card className="border border-slate-100">
             <CardBody className="p-6 md:p-8 flex flex-col gap-6">
@@ -118,7 +206,10 @@ const TaskDetails = () => {
               <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-100">
                 <div className="flex items-center gap-4">
                   <img
-                    src={task.companyLogo || 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=150&auto=format&fit=crop&q=80'}
+                    src={
+                      task.companyLogo ||
+                      'https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=150&auto=format&fit=crop&q=80'
+                    }
                     alt={task.companyName}
                     className="w-14 h-14 rounded-xl object-cover border border-slate-100"
                   />
@@ -127,15 +218,18 @@ const TaskDetails = () => {
                     <p className="text-sm font-semibold text-slate-500">Posted by {task.companyName}</p>
                   </div>
                 </div>
-                <Badge variant={task.difficulty === 'Easy' ? 'green' : task.difficulty === 'Intermediate' ? 'blue' : 'purple'} className="capitalize text-sm py-1 px-3">
+                <Badge
+                  variant={
+                    task.difficulty === 'Easy' ? 'green' : task.difficulty === 'Intermediate' ? 'blue' : 'purple'
+                  }
+                  className="capitalize text-sm py-1 px-3"
+                >
                   {task.difficulty}
                 </Badge>
               </div>
 
               {/* Task Details Content */}
-              <div className="prose prose-slate max-w-none">
-                {renderDescription(task.description)}
-              </div>
+              <div className="prose prose-slate max-w-none">{renderDescription(task.description)}</div>
             </CardBody>
           </Card>
         </div>
@@ -148,7 +242,7 @@ const TaskDetails = () => {
             </CardHeader>
             <CardBody className="flex flex-col gap-4">
               <div className="flex flex-col gap-3.5">
-                {/* Reward Metric */}
+                {/* Reward */}
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
                     <IoWalletOutline size={20} />
@@ -159,7 +253,7 @@ const TaskDetails = () => {
                   </div>
                 </div>
 
-                {/* Duration Metric */}
+                {/* Duration */}
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-blue-50 text-primary rounded-lg">
                     <IoTimeOutline size={20} />
@@ -170,7 +264,7 @@ const TaskDetails = () => {
                   </div>
                 </div>
 
-                {/* Applicants Metric */}
+                {/* Applicants */}
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-slate-50 text-slate-500 rounded-lg">
                     <IoPeopleOutline size={20} />
@@ -182,7 +276,7 @@ const TaskDetails = () => {
                 </div>
               </div>
 
-              {/* Tag Badges */}
+              {/* Tags */}
               <div className="border-t border-slate-50 pt-4 flex flex-col gap-2">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Required Skills</span>
                 <div className="flex flex-wrap gap-1.5">
@@ -194,7 +288,7 @@ const TaskDetails = () => {
                 </div>
               </div>
 
-              {/* Action Button depending on session & submission */}
+              {/* CTA */}
               <div className="border-t border-slate-50 pt-4 mt-2">
                 {!user ? (
                   <Link to="/login" className="w-full block">
@@ -208,7 +302,8 @@ const TaskDetails = () => {
                         <span className="text-xs font-extrabold text-slate-700">Project Submitted</span>
                       </div>
                       <p className="text-[10px] text-slate-400 leading-relaxed">
-                        You have already submitted a solution for this challenge. Keep track of reviews inside your candidate dashboard.
+                        You have already submitted a solution for this challenge. Keep track of reviews inside your
+                        candidate dashboard.
                       </p>
                       <Link to="/dashboard/candidate" className="w-full">
                         <Button variant="outline" size="sm" className="w-full">
@@ -259,16 +354,67 @@ const TaskDetails = () => {
               </div>
             )}
 
+            {/* GitHub URL — optional when a file is provided */}
             <Input
-              label="GitHub Repository URL"
+              label="GitHub Repository URL (optional if uploading a file)"
               type="url"
               name="githubUrl"
               value={formData.githubUrl}
               onChange={handleChange}
               placeholder="https://github.com/yourusername/project-repo"
-              required
             />
-            
+
+            {/* File Upload */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-slate-600">
+                Upload Submission File
+                <span className="font-normal text-slate-400 ml-1">
+                  (optional — PDF, DOC, DOCX, ZIP, PNG, JPG · max 10 MB)
+                </span>
+              </label>
+
+              {selectedFile ? (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5">
+                  <IoDocumentOutline size={18} className="text-blue-500 shrink-0" />
+                  <span className="text-xs font-semibold text-blue-800 truncate flex-1">{selectedFile.name}</span>
+                  <span className="text-[10px] text-blue-500 shrink-0">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveFile}
+                    className="ml-1 text-blue-400 hover:text-red-500 transition-colors shrink-0"
+                    aria-label="Remove file"
+                  >
+                    <IoCloseCircleOutline size={18} />
+                  </button>
+                </div>
+              ) : (
+                <label
+                  htmlFor="submission-file-input"
+                  className="flex items-center gap-2 border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 transition-colors rounded-lg px-3 py-3 cursor-pointer"
+                >
+                  <IoCloudUploadOutline size={18} className="text-slate-400" />
+                  <span className="text-xs text-slate-500">Click to choose a file</span>
+                </label>
+              )}
+
+              <input
+                id="submission-file-input"
+                type="file"
+                accept=".pdf,.doc,.docx,.zip,.png,.jpg,.jpeg"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              {fileError && (
+                <p className="text-xs text-red-600 font-semibold flex items-center gap-1">
+                  <IoAlertCircleOutline size={14} />
+                  {fileError}
+                </p>
+              )}
+            </div>
+
             <Input
               label="Live Deployment Link (Optional)"
               type="url"
@@ -285,15 +431,33 @@ const TaskDetails = () => {
               value={formData.notes}
               onChange={handleChange}
               placeholder="Explain how you built the project, what design structures you implemented, and how we can test the functionalities..."
-              required
             />
 
             <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 mt-2">
-              <Button variant="outline" onClick={() => setIsSubmitModalOpen(false)}>
+              <Button
+                variant="outline"
+                onClick={() => setIsSubmitModalOpen(false)}
+                disabled={isUploading}
+              >
                 Cancel
               </Button>
-              <Button type="submit">
-                Submit Files
+              <Button type="submit" disabled={isUploading} className="relative min-w-[120px]">
+                {isUploading ? (
+                  <span className="flex items-center gap-2">
+                    <svg
+                      className="animate-spin h-4 w-4"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                    {selectedFile ? 'Uploading…' : 'Submitting…'}
+                  </span>
+                ) : (
+                  'Submit Files'
+                )}
               </Button>
             </div>
           </form>
