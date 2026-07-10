@@ -1,134 +1,181 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import { ADMIN_EMAIL } from '../config';
 
 const AuthContext = createContext(null);
 
-const DEFAULT_USERS = [
-  {
-    id: 'user_cand_1',
-    name: 'Alex Rivera',
-    email: 'candidate@microintern.com',
-    password: 'password',
-    role: 'candidate',
-    title: 'Frontend Engineer',
-    bio: 'Passionate developer specializing in React, Next.js, and CSS animations. Building responsive and highly aesthetic user interfaces.',
-    skills: ['React', 'JavaScript', 'Tailwind CSS', 'CSS v4', 'Node.js', 'Git'],
-    portfolioUrl: 'https://github.com/alexrivera',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    points: 350,
-  },
-  {
-    id: 'user_comp_1',
-    name: 'Sarah Chen',
-    email: 'company@stripe.com',
-    password: 'password',
-    role: 'company',
-    companyName: 'Stripe',
-    companyLogo: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=150&auto=format&fit=crop&q=80',
-    companyUrl: 'https://stripe.com',
-    bio: 'Stripe is a financial infrastructure platform for the internet. Millions of companies use Stripe to accept payments and manage their businesses.',
-  }
-];
+// ─── Helper: determine effective role ────────────────────────────────────────
+// Admin is granted purely by email match — never via Firestore role field.
+function resolveRole(email, firestoreRole) {
+  if (ADMIN_EMAIL && email === ADMIN_EMAIL) return 'admin';
+  return firestoreRole ?? undefined; // null stays null (needs role pick), undefined = not loaded
+}
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem('microintern_users');
-    return saved ? JSON.parse(saved) : DEFAULT_USERS;
-  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // ─── Listen for Firebase Auth state changes ────────────────────────────────
+  // FIX: All profile creation and role resolution lives HERE — not in signInWithGoogle.
+  // This eliminates the race condition where onAuthStateChanged fired before
+  // signInWithGoogle could finish writing the Firestore doc.
   useEffect(() => {
-    const activeSession = localStorage.getItem('microintern_session');
-    if (activeSession) {
-      setUser(JSON.parse(activeSession));
-    }
-    setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          let profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+
+          if (!profileSnap.exists()) {
+            // First-time sign-in (Google or otherwise without a profile yet).
+            // Create a minimal profile with role: null so the user is sent to /choose-role.
+            const minimalProfile = {
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              email: firebaseUser.email || '',
+              role: null,
+              bio: '',
+              active: true,
+              createdAt: serverTimestamp(),
+            };
+            await setDoc(doc(db, 'users', firebaseUser.uid), minimalProfile);
+            // Re-read so we get the server timestamp back
+            profileSnap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          }
+
+          const profileData = profileSnap.data() || {};
+          const effectiveRole = resolveRole(firebaseUser.email, profileData.role);
+
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            ...profileData,
+            role: effectiveRole, // Admin override applied here
+          });
+        } catch (err) {
+          console.error('Error fetching/creating user profile:', err);
+          // Fallback: set minimal user so the app doesn't hang on loading
+          setUser({ uid: firebaseUser.uid, email: firebaseUser.email, role: undefined });
+        }
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('microintern_users', JSON.stringify(users));
-  }, [users]);
-
-  const login = (email, password) => {
+  // ─── Login ─────────────────────────────────────────────────────────────────
+  const login = async (email, password) => {
     setError('');
-    const foundUser = users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
-
-    if (foundUser) {
-      // Remove password from active session state
-      const { password: _, ...sessionUser } = foundUser;
-      setUser(sessionUser);
-      localStorage.setItem('microintern_session', JSON.stringify(sessionUser));
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      // onAuthStateChanged handles everything — including admin role resolution
       return { success: true };
-    } else {
-      setError('Invalid email or password');
-      return { success: false, error: 'Invalid email or password' };
+    } catch (err) {
+      const message = friendlyAuthError(err.code);
+      setError(message);
+      return { success: false, error: message };
     }
   };
 
-  const register = (registerData) => {
+  // ─── Register ──────────────────────────────────────────────────────────────
+  const register = async (registerData) => {
     setError('');
     const { name, email, password, role, companyName, title } = registerData;
 
-    const emailExists = users.some((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (emailExists) {
-      setError('An account with this email already exists.');
-      return { success: false, error: 'Email already exists' };
+    try {
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      const { uid } = credential.user;
+
+      const baseProfile = {
+        name,
+        email,
+        role,
+        bio: '',
+        active: true,
+        createdAt: serverTimestamp(),
+      };
+
+      const roleProfile =
+        role === 'candidate'
+          ? {
+              title: title || 'Developer',
+              skills: [],
+              portfolioUrl: '',
+              avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
+              points: 0,
+            }
+          : {
+              companyName: companyName || 'My Startup',
+              companyLogo:
+                'https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=150&auto=format&fit=crop&q=80',
+              companyUrl: '',
+            };
+
+      // Write the full profile — onAuthStateChanged will see it on next read
+      await setDoc(doc(db, 'users', uid), { ...baseProfile, ...roleProfile });
+      return { success: true };
+    } catch (err) {
+      const message = friendlyAuthError(err.code);
+      setError(message);
+      return { success: false, error: message };
     }
-
-    const newUser = {
-      id: `user_${role === 'candidate' ? 'cand' : 'comp'}_${Date.now()}`,
-      name,
-      email,
-      password,
-      role,
-      bio: '',
-      ...(role === 'candidate'
-        ? {
-            title: title || 'Developer',
-            skills: [],
-            portfolioUrl: '',
-            avatar: `https://images.unsplash.com/photo-${role === 'candidate' ? '1535713875002-d1d0cf377fde' : '1570295999919-56ceb5ecca61'}?w=150&auto=format&fit=crop&q=80`,
-            points: 0,
-          }
-        : {
-            companyName: companyName || 'My Startup',
-            companyLogo: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=150&auto=format&fit=crop&q=80',
-            companyUrl: '',
-          }),
-    };
-
-    setUsers((prev) => [...prev, newUser]);
-    
-    // Auto-login after registration
-    const { password: _, ...sessionUser } = newUser;
-    setUser(sessionUser);
-    localStorage.setItem('microintern_session', JSON.stringify(sessionUser));
-
-    return { success: true };
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('microintern_session');
+  // ─── Google Sign-In ────────────────────────────────────────────────────────
+  // SIMPLIFIED: only opens the popup. Profile creation + role resolution is
+  // handled entirely in onAuthStateChanged above — no race condition possible.
+  const signInWithGoogle = async () => {
+    setError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      // onAuthStateChanged fires, fetches/creates the profile, sets user state
+      return { success: true };
+    } catch (err) {
+      if (err.code === 'auth/popup-closed-by-user') {
+        return { success: false, error: null }; // User dismissed — not an error
+      }
+      const message = friendlyAuthError(err.code);
+      setError(message);
+      return { success: false, error: message };
+    }
   };
 
-  const updateProfile = (updatedFields) => {
+  // ─── Logout ────────────────────────────────────────────────────────────────
+  const logout = async () => {
+    setError('');
+    try {
+      await signOut(auth);
+      setUser(null);
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  // ─── Update Profile ────────────────────────────────────────────────────────
+  const updateProfile = async (updatedFields) => {
     if (!user) return { success: false };
-
-    // Update session state
-    const updatedUser = { ...user, ...updatedFields };
-    setUser(updatedUser);
-    localStorage.setItem('microintern_session', JSON.stringify(updatedUser));
-
-    // Update in users repository
-    setUsers((prevUsers) =>
-      prevUsers.map((u) => (u.id === user.id ? { ...u, ...updatedFields } : u))
-    );
-
-    return { success: true };
+    try {
+      await updateDoc(doc(db, 'users', user.uid), updatedFields);
+      // Re-apply admin override in case role field was updated
+      const newRole = resolveRole(user.email, updatedFields.role ?? user.role);
+      setUser((prev) => ({ ...prev, ...updatedFields, role: newRole }));
+      return { success: true };
+    } catch (err) {
+      console.error('Profile update error:', err);
+      return { success: false, error: err.message };
+    }
   };
 
   return (
@@ -141,6 +188,7 @@ export const AuthProvider = ({ children }) => {
         register,
         logout,
         updateProfile,
+        signInWithGoogle,
       }}
     >
       {children}
@@ -155,3 +203,25 @@ export const useAuth = () => {
   }
   return context;
 };
+
+// ─── Helper: map Firebase error codes to readable messages ───────────────────
+function friendlyAuthError(code) {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+      return 'Invalid email or password.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists.';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check your connection and try again.';
+    default:
+      return 'Authentication failed. Please try again.';
+  }
+}

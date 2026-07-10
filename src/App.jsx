@@ -11,12 +11,17 @@ import DashboardLayout from './layouts/DashboardLayout';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ChooseRole from './pages/ChooseRole';
 import Tasks from './pages/Tasks';
 import TaskDetails from './pages/TaskDetails';
 import DashboardCandidate from './pages/DashboardCandidate';
 import DashboardCompany from './pages/DashboardCompany';
 import CreateTask from './pages/CreateTask';
+import AdminDashboard from './pages/AdminDashboard';
 import NotFound from './pages/NotFound';
+
+// Route guards
+import AdminRoute from './components/AdminRoute';
 
 function App() {
   return (
@@ -29,11 +34,22 @@ function App() {
               <Route index element={<Home />} />
               <Route path="login" element={<Login />} />
               <Route path="register" element={<Register />} />
+              <Route path="choose-role" element={<ChooseRole />} />
               <Route path="tasks" element={<Tasks />} />
               <Route path="tasks/:id" element={<TaskDetails />} />
 
               {/* Company Protected Creation Route */}
               <Route path="tasks/create" element={<CreateTask />} />
+
+              {/* Admin — protected by AdminRoute guard */}
+              <Route
+                path="admin"
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                }
+              />
 
               {/* Protected Dashboards (DashboardLayout does auth checks) */}
               <Route path="dashboard" element={<DashboardLayout />}>
